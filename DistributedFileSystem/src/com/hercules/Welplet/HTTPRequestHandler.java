@@ -2,6 +2,8 @@ package com.hercules.Welplet;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,6 +12,8 @@ import java.util.StringTokenizer;
 
 public class HTTPRequestHandler implements Runnable {
 	final static int LF = (int) '\n';
+	private static final String DEFAULT_FILE = "./default.html";
+	private static final String CRLF = "\r\n";
 	private Socket mConnectedSocket;
 	private InputStream mSocketInputStream;
 	private DataOutputStream mSocketDataOutputStream;
@@ -115,6 +119,15 @@ public class HTTPRequestHandler implements Runnable {
 		readRequest();
 		parseRequest();
 
+		try {
+			mSocketDataOutputStream.close();
+			mSocketInputStream.close();
+			mConnectedSocket.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
 	}
 
 	private void parseRequest() {
@@ -126,14 +139,54 @@ public class HTTPRequestHandler implements Runnable {
 		if (method.equals("POST")) {
 			handlePost();
 		} else if (method.equals("GET")) {
-			String fileName = stk.nextToken();
+			String fileName = "." + stk.nextToken();
 			handleGet(fileName);
 		}
 	}
 
 	private void handleGet(String fileName) {
-		// TODO Auto-generated method stub
 
+		sendResponseAsFile(fileName);
+
+	}
+
+	private void sendResponseAsFile(String fileName) {
+		if (fileName.equals("./"))
+			fileName = DEFAULT_FILE;
+		try {
+			FileInputStream fileTobeRead = new FileInputStream(fileName);
+			// HTTP header
+			String HTTPHeader = "HTTP/1.0 200 OK" + CRLF + "Content-Type: "
+					+ contentType(fileName) + CRLF + CRLF;
+
+			mSocketDataOutputStream.writeBytes(HTTPHeader);
+
+			byte[] buffer = new byte[1024];
+			int bytes = 0;
+
+			// Copy requested file into the socket's output stream.
+
+			while ((bytes = fileTobeRead.read(buffer)) != -1) {
+				mSocketDataOutputStream.write(buffer, 0, bytes);
+			}
+			fileTobeRead.close();
+
+		} catch (FileNotFoundException e) {
+			String BadResponse = "HTTP/1.0 404 Not Found" + CRLF
+					+ "Content-Type: text/html" + CRLF + CRLF + "<HTML>"
+					+ "<HEAD><TITLE>Not Found</TITLE></HEAD>"
+					+ "<BODY>Not Found</BODY></HTML>";
+
+			try {
+				mSocketDataOutputStream.writeBytes(BadResponse);
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+
+		} catch (IOException e) {
+
+		}
 	}
 
 	private void handlePost() {
@@ -152,6 +205,8 @@ public class HTTPRequestHandler implements Runnable {
 				handleMultipartPost();
 			}
 		}
+
+		sendResponseAsFile("./");
 
 		// increment counter to the beginning of the next line
 
@@ -196,6 +251,16 @@ public class HTTPRequestHandler implements Runnable {
 
 	private void debug(String toDebug) {
 		System.out.println(toDebug);
+	}
+
+	private static String contentType(String fileName) {
+		if (fileName.endsWith(".htm") || fileName.endsWith(".html")) {
+			return "text/html";
+		}
+		if (fileName.endsWith(".ram") || fileName.endsWith(".ra")) {
+			return "audio/x-pn-realaudio";
+		}
+		return "application/octet-stream";
 	}
 
 	private void readRequest() {
